@@ -28,7 +28,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import BrokenAPI
+from .api import AsyncBrokenAPI
 from .const import DOMAIN
 
 SCAN_INTERVAL = timedelta(seconds=10)
@@ -39,7 +39,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sess = async_get_clientsession(hass)
     hass.data[DOMAIN] = hass.data.get(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = BrokenAPI(
+    hass.data[DOMAIN][entry.entry_id] = AsyncBrokenAPI(
         sess=sess,
         username=entry.data[CONF_USERNAME], password=entry.data[CONF_PASSWORD]
     )

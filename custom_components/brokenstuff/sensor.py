@@ -20,7 +20,7 @@
 
 from typing import Optional
 
-from .api import BrokenAPI
+from .api import AsyncBrokenAPI
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -96,14 +96,14 @@ async def async_setup_entry(
         DiscoveryInfoType
     ] = None,  # noqa DiscoveryInfoType | None
 ):
-
     api = hass.data[DOMAIN][config_entry.entry_id]
     sensors = [
         BrokenSensor(
+            hass=hass,
             api=api,
             name=config_entry.data.get("name", DEFAULT_SENSOR_NAME),
             unique_id=config_entry.entry_id,
         )
     ]
 
-    add_entities(sensors, update_before_add=True)  # Update entity on add
+    add_entities(sensors, update_before_add=False)  # Update entity on add
