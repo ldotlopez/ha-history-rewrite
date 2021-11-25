@@ -1,0 +1,13 @@
+{
+  "domain": "brokenstuff",
+  "name": "Broken stuff for testing",
+  "config_flow": true,
+  "documentation": "https://github.com/ldotlopez/ha-brokenstuff",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": [
+    "@ldotlopez"
+  ],
+  "iot_class": "cloud_polling",
+  "version": "0.0.0"
+}
