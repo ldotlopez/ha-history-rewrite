@@ -3,4 +3,4 @@ default_config:
 logger:
   default: warning
   logs:
-    custom_components.brokenstuff: debug
+    custom_components.history_rewrite: debug

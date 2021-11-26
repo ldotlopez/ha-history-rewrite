@@ -18,5 +18,5 @@
 # USA.
 
 
-DOMAIN = "brokenstuff"
-DEFAULT_SENSOR_NAME = "dork"
+DOMAIN = "history_rewrite"
+DEFAULT_SENSOR_NAME = "mcfly"

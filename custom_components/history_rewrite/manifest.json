@@ -1,8 +1,8 @@
 {
-  "domain": "brokenstuff",
-  "name": "Broken stuff for testing",
+  "domain": "history_rewrite",
+  "name": "Mc Fly (history rewrite)",
   "config_flow": true,
-  "documentation": "https://github.com/ldotlopez/ha-brokenstuff",
+  "documentation": "https://github.com/ldotlopez/ha-history-rewrite",
   "requirements": [],
   "dependencies": [],
   "codeowners": [
