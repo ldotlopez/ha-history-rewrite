@@ -100,10 +100,6 @@ class MacFlySensor(RestoreEntity, SensorEntity):
             )
             return
 
-        import ipdb
-
-        ipdb.set_trace()
-        pass
         try:
             attributes = self._hass.states.get(entity_id).attributes
         except AttributeError:
