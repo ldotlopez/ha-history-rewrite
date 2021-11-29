@@ -3,4 +3,7 @@ default_config:
 logger:
   default: warning
   logs:
+    homeassistant.components.recorder: debug
+    homeassistant.components.recorder.statistics: debug
+    homeassistant.components.sensor.recorder: debug
     custom_components.history_rewrite: debug
