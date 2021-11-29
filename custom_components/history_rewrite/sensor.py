@@ -18,16 +18,20 @@
 # USA.
 
 
-from typing import Optional
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Iterable, Optional
 
 from homeassistant.components.sensor import (
+    ATTR_LAST_RESET,
     ATTR_STATE_CLASS,
+    STATE_CLASS_MEASUREMENT,
     STATE_CLASS_TOTAL_INCREASING,
     SensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import DEVICE_CLASS_ENERGY, ENERGY_KILO_WATT_HOUR
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.typing import DiscoveryInfoType
@@ -38,86 +42,128 @@ from .const import DEFAULT_SENSOR_NAME, DOMAIN
 from .hack import write_state_at_time
 
 PLATFORM = "sensor"
+from datetime import timedelta
 
 
-class MacFlySensor(RestoreEntity, SensorEntity):
-    def __init__(self, hass, name, api, unique_id):
+class HistoricalEntity(RestoreEntity):
+    @dataclass
+    class Data:
+        data: list[tuple[datetime, Any]]
+        latest_state: State
+
+    def __init__(self, *args, **kwargs):
+        self._historical = HistoricalEntity.Data(data=[], latest_state=None)
+        _LOGGER.debug("historical interface inited")
+
+        super(*args, **kwargs)
+
+    async def async_added_to_hass(self) -> None:
+        self._historical.latest = await self.async_get_last_state()
+        if self._historical.latest is None:
+            return
+
+        _LOGGER.debug(
+            f"Restored previous state: {self._historical.latest.state}"
+        )
+        _LOGGER.debug(
+            f"         last-updated: {self._historical.latest.last_updated}"
+        )
+        _LOGGER.debug(
+            f"         last-changed: {self._historical.latest.last_changed}"
+        )
+
+    def write_historical_log_to_hass(self):
+        latest_state = self.get_historical_latest()
+
+        if latest_state is None:
+            _LOGGER.debug("Set initial state to timestamp 0")
+            zero_dt = dt_util.as_local(datetime.fromtimestamp(0))
+            write_state_at_time(
+                self, None, dt=zero_dt
+                # self, None, dt=zero_dt, attributes={"last_reset": zero_dt}
+            )
+
+        self._purge_historical_data(since=latest_state)
+        for (dt, value) in self._historical.data:
+            _LOGGER.debug(f"Write historical state: {value} @ {dt}")
+            write_state_at_time(
+                self,
+                value,
+                dt=dt,
+                # attributes={"last_reset": dt-timedelta(minutes=5)},
+            )
+            self._historical.latest = (
+                self.hass.states.get(self.entity_id) or self._historical.latest
+            )
+
+        _LOGGER.debug(
+            f"After historical write latest is: {self._historical.latest}"
+        )
+
+    def extend_historical_log(
+        self, data: Iterable[tuple[datetime, Any]]
+    ) -> None:
+        self._historical.data.extend(data)
+        self._historical.data = list(
+            sorted(self._historical.data, key=lambda x: x[0])
+        )
+
+    def _purge_historical_data(self, since) -> None:
+        if since is None:
+            _LOGGER.debug("No previous state, skip historical purge")
+            return
+
+        initial = len(self._historical.data)
+        self._historical.data = [
+            x for x in self._historical.data if x[0] > since.last_changed
+        ]
+        final = len(self._historical.data)
+
+        _LOGGER.debug(f"Purged {initial-final} elements of {initial}")
+
+    def get_historical_latest(self):
+        return self._historical.latest
+
+
+class MacFlySensor(HistoricalEntity, SensorEntity):
+    def __init__(self, name, api, unique_id):
+        super().__init__()
+        self._api = api
+
         self._attr_name = name
         self._attr_unique_id = unique_id
-
-        self._hass = hass
-        self._api = api
-        self._states = []
-        self._state_initialized = False
-
-    @property
-    def should_poll(self):
-        return True
-
-    @property
-    def state(self):
-        if not self._state_initialized:
-            self.async_schedule_update_ha_state(force_refresh=True)
-            self._state_initialized = True
-        return self._states[-1][1]
-
-    @property
-    def unit_of_measurement(self):
-        return ENERGY_KILO_WATT_HOUR
-
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_ENERGY
+        self._attr_unit_of_measurement = ENERGY_KILO_WATT_HOUR
+        self._attr_native_unit_of_measurement = ENERGY_KILO_WATT_HOUR
+        self._attr_device_class = DEVICE_CLASS_ENERGY
 
     @property
     def extra_state_attributes(self):
         return {
-            ATTR_STATE_CLASS: self.state_class,
+            ATTR_LAST_RESET: self.last_reset,
+            ATTR_STATE_CLASS: STATE_CLASS_MEASUREMENT,
         }
 
     @property
-    def state_class(self):
-        return STATE_CLASS_TOTAL_INCREASING
+    def last_reset(self):
+        if latest := self.get_historical_latest():
+            return latest.last_changed - timedelta(minutes=5)
 
-    async def async_added_to_hass(self) -> None:
-        if state := await self.async_get_last_state():
-            self._states = [(state.last_changed, state.state)]
+        return None
+
+    @property
+    def state(self):
+        self.write_historical_log_to_hass()
+
+        # What if there are no records?
+        # get_historical_latest() will be None
+        return float(self.get_historical_latest().state)
 
     async def async_update(self):
-        entity_id = f"{PLATFORM}.{self.name}"
-        now = dt_util.now()
-
         # Fix naive-timezone dt's, can lead to future states
-        self._states = await self._api.get_historical_data()
-        self._states = [(dt_util.as_utc(dt), v) for (dt, v) in self._states]
+        log = await self._api.get_historical_data()
+        log = [(dt_util.as_utc(dt), v) for (dt, v) in log]
 
-        # Writing historical data before first state has been generate leads to
-        # entity duplication (adding second entity with '_2' suffix)
-        if not self._state_initialized:
-            _LOGGER.debug(
-                f"{entity_id} state has not been initialized yet, "
-                "skipping history rewrite"
-            )
-            return
-
-        try:
-            attributes = self._hass.states.get(entity_id).attributes
-        except AttributeError:
-            attributes = None
-
-        for (dt, state) in self._states:
-            write_state_at_time(
-                self._hass, entity_id, state, dt, attributes=attributes
-            )
-            diff = int((now - dt).total_seconds())
-            mins = int(diff // 60)
-            secs = diff % 60
-
-            _LOGGER.debug(
-                f"{entity_id} set to {state} at "
-                f"{dt.hour:02d}:{dt.minute:02d}:{dt.second:02d} "
-                f"({mins:02d} min {secs:02d} secs ago)"
-            )
+        self.extend_historical_log(log)
 
 
 async def async_setup_entry(
@@ -129,7 +175,6 @@ async def async_setup_entry(
     api = hass.data[DOMAIN][config_entry.entry_id]
     sensors = [
         MacFlySensor(
-            hass=hass,
             api=api,
             name=config_entry.data.get("name", DEFAULT_SENSOR_NAME),
             unique_id=config_entry.entry_id,

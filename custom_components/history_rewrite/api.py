@@ -18,7 +18,6 @@
 # USA.
 
 import math
-import random
 import datetime
 
 
@@ -31,7 +30,7 @@ class API:
     def device_info(self):
         return {"name": "Time machine device"}
 
-    async def get_historical_data(self):
+    async def get_historical_data(self, accumlated=False):
         def _fn():
             now = datetime.datetime.now()
             start = now.replace(
@@ -43,11 +42,11 @@ class API:
                 (5, 2),
                 (10, 1),
                 (15, 2),
-                (20, 3),
+                (20, 4),
                 (25, 2),
                 (30, 8),
-                (35, 4),
-                (40, 3),
+                (35, 3),
+                (40, 5),
                 (45, 2),
                 (50, 1),
                 (55, 5)
@@ -57,9 +56,13 @@ class API:
             )
             for (timeincr, valincr) in pattern:
                 dt = start + datetime.timedelta(minutes=timeincr)
-                value = value + valincr
 
-                yield (dt, value)
+                if accumlated:
+                    value = value + (valincr*100)
+                else:
+                    value = valincr
+
+                yield (dt, float(value))
 
         return list(_fn())
 
