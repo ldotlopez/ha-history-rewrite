@@ -20,7 +20,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Mapping
 from homeassistant.core import State, MappingProxyType
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -85,12 +85,20 @@ class HistoricalEntity(RestoreEntity):
             )
 
         self._purge_historical_data(since=latest_state)
-        for (dt, value) in self.historical.data:
-            _LOGGER.debug(f"Write historical state: {value} @ {dt}")
+        for pack in self.historical.data:
+            if len(pack) == 2:
+                dt, value = pack
+                attributes = {}
+            else:
+                dt, value, attributes = pack
+
+            _LOGGER.debug(
+                f"Write historical state: {value} @ {dt} {attributes!r}"
+            )
             self.write_state_at_time(
                 value,
                 dt=dt,
-                # attributes={"last_reset": dt-timedelta(minutes=5)},
+                attributes=attributes,
             )
             self.historical.latest = (
                 self.hass.states.get(self.entity_id) or self.historical.latest
@@ -101,8 +109,16 @@ class HistoricalEntity(RestoreEntity):
         )
 
     def extend_historical_log(
-        self, data: Iterable[tuple[datetime, Any]]
+        self, data: Iterable[tuple[datetime, Any, Optional[Mapping]]]
     ) -> None:
+        """
+        Add historical states to the queue.
+        The data is an iterables of tuples, each of one must be:
+          - 1st element in the tuple represents the time when the state was
+        generated
+          - 2nd element is the value of the state
+          - 3rd element are extra attributes attached to the state
+        """
         self.historical.data.extend(data)
         self.historical.data = list(
             sorted(self.historical.data, key=lambda x: x[0])

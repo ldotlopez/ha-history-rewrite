@@ -41,6 +41,7 @@ from .const import DEFAULT_SENSOR_NAME, DOMAIN
 from datetime import timedelta
 
 from .historical_state import HistoricalEntity
+from . import _LOGGER
 
 
 class MacFlySensor(HistoricalEntity, SensorEntity):
@@ -63,7 +64,9 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
     @property
     def last_reset(self):
         if latest := self.get_historical_latest():
-            return latest.last_changed - timedelta(minutes=5)
+            last_reset = latest.last_changed - timedelta(hours=1)
+            _LOGGER.debug(f"Set last_reset to: {last_reset}")
+            return last_reset
 
         return None
 
@@ -76,9 +79,25 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
         return float(self.get_historical_latest().state)
 
     async def async_update(self):
-        # Fix naive-timezone dt's, can lead to future states
-        log = await self._api.get_historical_data()
-        log = [(dt_util.as_utc(dt), v) for (dt, v) in log]
+        # Query for the last week since the start of the previous hour
+        step = timedelta(hours=1)
+        end = (
+            dt_util.now().replace(minutes=0, seconds=0, microsecond=0)
+            - timedelta(hours=1)
+            - step
+        )
+        start = end - timedelta(days=7)
+
+        # Mangle API data
+        log = await self._api.get_historical_data(start, end, step)
+        log = [
+            (
+                dt_util.as_local(end),
+                v,
+                {"last_reset": dt_util.as_local(start)},
+            )
+            for (start, end, v) in log
+        ]
 
         self.extend_historical_log(log)
 
