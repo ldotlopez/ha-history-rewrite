@@ -18,9 +18,7 @@
 # USA.
 
 
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Iterable, Optional
+from typing import Optional
 
 from homeassistant.components.sensor import (
     ATTR_LAST_RESET,
@@ -31,98 +29,18 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import DEVICE_CLASS_ENERGY, ENERGY_KILO_WATT_HOUR
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
+
 from homeassistant.helpers.typing import DiscoveryInfoType
 from homeassistant.util import dt as dt_util
 
-from . import _LOGGER
 from .const import DEFAULT_SENSOR_NAME, DOMAIN
-from .hack import write_state_at_time
 
-PLATFORM = "sensor"
+
 from datetime import timedelta
 
-
-class HistoricalEntity(RestoreEntity):
-    @dataclass
-    class Data:
-        data: list[tuple[datetime, Any]]
-        latest_state: State
-
-    def __init__(self, *args, **kwargs):
-        self._historical = HistoricalEntity.Data(data=[], latest_state=None)
-        _LOGGER.debug("historical interface inited")
-
-        super(*args, **kwargs)
-
-    async def async_added_to_hass(self) -> None:
-        self._historical.latest = await self.async_get_last_state()
-        if self._historical.latest is None:
-            return
-
-        _LOGGER.debug(
-            f"Restored previous state: {self._historical.latest.state}"
-        )
-        _LOGGER.debug(
-            f"         last-updated: {self._historical.latest.last_updated}"
-        )
-        _LOGGER.debug(
-            f"         last-changed: {self._historical.latest.last_changed}"
-        )
-
-    def write_historical_log_to_hass(self):
-        latest_state = self.get_historical_latest()
-
-        if latest_state is None:
-            _LOGGER.debug("Set initial state to timestamp 0")
-            zero_dt = dt_util.as_local(datetime.fromtimestamp(0))
-            write_state_at_time(
-                self, None, dt=zero_dt
-                # self, None, dt=zero_dt, attributes={"last_reset": zero_dt}
-            )
-
-        self._purge_historical_data(since=latest_state)
-        for (dt, value) in self._historical.data:
-            _LOGGER.debug(f"Write historical state: {value} @ {dt}")
-            write_state_at_time(
-                self,
-                value,
-                dt=dt,
-                # attributes={"last_reset": dt-timedelta(minutes=5)},
-            )
-            self._historical.latest = (
-                self.hass.states.get(self.entity_id) or self._historical.latest
-            )
-
-        _LOGGER.debug(
-            f"After historical write latest is: {self._historical.latest}"
-        )
-
-    def extend_historical_log(
-        self, data: Iterable[tuple[datetime, Any]]
-    ) -> None:
-        self._historical.data.extend(data)
-        self._historical.data = list(
-            sorted(self._historical.data, key=lambda x: x[0])
-        )
-
-    def _purge_historical_data(self, since) -> None:
-        if since is None:
-            _LOGGER.debug("No previous state, skip historical purge")
-            return
-
-        initial = len(self._historical.data)
-        self._historical.data = [
-            x for x in self._historical.data if x[0] > since.last_changed
-        ]
-        final = len(self._historical.data)
-
-        _LOGGER.debug(f"Purged {initial-final} elements of {initial}")
-
-    def get_historical_latest(self):
-        return self._historical.latest
+from .historical_state import HistoricalEntity
 
 
 class MacFlySensor(HistoricalEntity, SensorEntity):
