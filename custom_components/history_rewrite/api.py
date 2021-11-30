@@ -17,10 +17,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
 # USA.
 
-import math
 from datetime import datetime, timedelta
 import random
-from functools import lru_cache
 
 
 class API:
@@ -32,86 +30,64 @@ class API:
     def device_info(self):
         return {"name": "Time machine device"}
 
-    @lru_cache
-    async def get_historical_data(self, start=None, end=None, step=None):
-        def _fn():
-            nonlocal start, end, step
+    @staticmethod
+    def calculate_value(point, aprox):
+        rstate = random.getstate()
+        random.seed(point)
+        ret = aprox * random.randint(75, 125) / 100
+        random.setstate(rstate)
 
-            start = start or datetime.now()
-            end = end or datetime.now()
-            step = step or timedelta(minutes=10)
+        return ret
 
-            start = start.replace(minute=0, second=0, microsecond=0)
-            end = end.replace(minute=0, second=0, microsecond=0)
+    def get_historical_data(self, start=None, end=None, step=None):
+        return list(self._get_historical_data(start, end, step))
 
-            start = min([start, end])
-            end = max([start, end])
+    def _get_historical_data(self, start=None, end=None, step=None):
+        """
+        Returns a random distribution of values for a series of intervals
+        between start and end (size determined by step)
+        Those values are random but fixed for each interval.
+        Ex.
+        _get_historical_data(0, 5, 1) ->
+            [(0, 1, 0.4),
+             (1, 2, 0.2),
+             (2, 3, 0.7),
+             (3, 4, 0.1),
+             (4, 5, 0.8)]
+        _get_historical_data(2, 7, 1) ->
+            [(2, 3, 0.7),
+             (3, 4, 0.1),
+             (4, 5, 0.8),
+             (5, 6, 0.3),
+             (6, 7, 0.4)]
+        """
 
-            reduction = 1635721200  # 2021-11-01 00:00:00
-            start_value = int(start.timestamp()) - reduction
-            end_value = int(end.timestamp()) - reduction
-            n_blocks = int((end - start) / step)
+        start = start or datetime.now()
+        end = end or datetime.now()
+        step = step or timedelta(minutes=10)
 
-            print(f"{start_value} -> {end_value} in {n_blocks}")
+        start = min([start, end])
+        end = max([start, end])
 
-            available = end_value - start_value
+        reduction = 1635721200  # 2021-11-01 00:00:00
+        start_value = int(start.timestamp()) - reduction
+        end_value = int(end.timestamp()) - reduction
+        n_blocks = int((end - start) / step)
 
-            curr = start_value
-            available_per_block = available / n_blocks
-            for x in range(n_blocks):
-                p1 = start + (step * x)
-                p2 = start + (step * (x + 1))
+        available = end_value - start_value
 
-                value_for_block = (
-                    available_per_block * random.randint(75, 125) / 100
-                )
-                value_for_block = min([available, value_for_block])
+        curr = start_value
+        available_per_block = available / n_blocks
+        for x in range(n_blocks):
+            p1 = start + (step * x)
+            p2 = start + (step * (x + 1))
 
-                available = available - value_for_block
-                curr = curr + value_for_block
-                # print(
-                #     f"{p1} -> {p2} {curr} (curr: {curr} incr: {value_for_block})"
-                # )
-                yield p1, p2, value_for_block
+            value_for_block = self.calculate_value(
+                p1.timestamp(), available_per_block
+            )
+            value_for_block = min([available, value_for_block])
 
-        return list(_fn())
+            available = available - value_for_block
+            curr = curr + value_for_block
 
-    # async def get_historical_data(self, accumlated=False):
-    #     def _fn():
-    #         now = datetime.datetime.now()
-    #         start = now.replace(
-    #             minute=0, second=0, microsecond=0
-    #         ) - datetime.timedelta(hours=1)
-
-    #         pattern = [
-    #             (0, 0),
-    #             (5, 2),
-    #             (10, 1),
-    #             (15, 2),
-    #             (20, 4),
-    #             (25, 2),
-    #             (30, 8),
-    #             (35, 3),
-    #             (40, 5),
-    #             (45, 2),
-    #             (50, 1),
-    #             (55, 5)
-    #         ]
-    #         value = math.floor(start.timestamp()) - math.floor(
-    #             datetime.datetime(year=2021, month=11, day=26).timestamp()
-    #         )
-    #         for (timeincr, valincr) in pattern:
-    #             dt = start + datetime.timedelta(minutes=timeincr)
-
-    #             if accumlated:
-    #                 value = value + (valincr*100)
-    #             else:
-    #                 value = valincr
-
-    #             yield (dt, float(value))
-
-    #     return list(_fn())
-
-
-class APIError(Exception):
-    pass
+            yield p1, p2, value_for_block

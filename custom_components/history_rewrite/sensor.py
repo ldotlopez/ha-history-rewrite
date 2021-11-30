@@ -41,7 +41,6 @@ from .const import DEFAULT_SENSOR_NAME, DOMAIN
 from datetime import timedelta
 
 from .historical_state import HistoricalEntity
-from . import _LOGGER
 
 
 class MacFlySensor(HistoricalEntity, SensorEntity):
@@ -63,38 +62,43 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
 
     @property
     def last_reset(self):
-        if latest := self.get_historical_latest():
-            last_reset = latest.last_changed - timedelta(hours=1)
-            _LOGGER.debug(f"Set last_reset to: {last_reset}")
-            return last_reset
+        # if latest := self.get_historical_latest():
+        #     last_reset = latest.last_changed - timedelta(hours=1)
+        #     _LOGGER.debug(f"Set last_reset to: {last_reset}")
+        #     return last_reset
 
         return None
 
     @property
     def state(self):
-        self.write_historical_log_to_hass()
+        # HistoricalEntities doesnt' pull but state is accessed only once when
+        # the sensor is registered for the first time in the database
 
-        # What if there are no records?
-        # get_historical_latest() will be None
-        return float(self.get_historical_latest().state)
+        if state := self.historical_state():
+            return float(state)
 
     async def async_update(self):
-        # Query for the last week since the start of the previous hour
+        # Query for the last day since the start of the current hour
         step = timedelta(hours=1)
         end = (
-            dt_util.now().replace(minutes=0, seconds=0, microsecond=0)
-            - timedelta(hours=1)
-            - step
+            dt_util.now().replace(minute=0, second=0, microsecond=0)
         )
-        start = end - timedelta(days=7)
+        start = end - timedelta(days=1)
+
+        # now = dt_util.now()
+        # step = timedelta(seconds=60)
+        # end = (
+        #     now.replace(second=0, microsecond=0)
+        # )
+        # start = end - timedelta(minutes=60)
 
         # Mangle API data
-        log = await self._api.get_historical_data(start, end, step)
+        log = self._api.get_historical_data(start, end, step)
         log = [
             (
-                dt_util.as_local(end),
+                dt_util.as_utc(end),
                 v,
-                {"last_reset": dt_util.as_local(start)},
+                {"last_reset": dt_util.as_utc(start)},
             )
             for (start, end, v) in log
         ]
