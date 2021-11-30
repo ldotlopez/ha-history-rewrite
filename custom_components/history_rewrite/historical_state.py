@@ -41,25 +41,35 @@ class HistoricalEntity(RestoreEntity):
         data: list[tuple[datetime, Any]]
         latest_state: State
 
-    def __init__(self, *args, **kwargs):
-        self._historical = HistoricalEntity.Data(data=[], latest_state=None)
-        _LOGGER.debug("historical interface inited")
+    @property
+    def historical(self):
+        """
+        The general trend in homeassistant helpers is to use them as mixins,
+        without inheritance, so no super().__init__() is called.
+        Because of that I implemented internal data stuff as a property.
+        """
+        if not hasattr(self, "_historical"):
+            setattr(
+                self,
+                "_historical",
+                HistoricalEntity.Data(data=[], latest_state=None),
+            )
 
-        super(*args, **kwargs)
+        return self._historical
 
     async def async_added_to_hass(self) -> None:
-        self._historical.latest = await self.async_get_last_state()
-        if self._historical.latest is None:
+        self.historical.latest = await self.async_get_last_state()
+        if self.historical.latest is None:
             return
 
         _LOGGER.debug(
-            f"Restored previous state: {self._historical.latest.state}"
+            f"Restored previous state: {self.historical.latest.state}"
         )
         _LOGGER.debug(
-            f"         last-updated: {self._historical.latest.last_updated}"
+            f"         last-updated: {self.historical.latest.last_updated}"
         )
         _LOGGER.debug(
-            f"         last-changed: {self._historical.latest.last_changed}"
+            f"         last-changed: {self.historical.latest.last_changed}"
         )
 
     def write_historical_log_to_hass(self):
@@ -75,27 +85,27 @@ class HistoricalEntity(RestoreEntity):
             )
 
         self._purge_historical_data(since=latest_state)
-        for (dt, value) in self._historical.data:
+        for (dt, value) in self.historical.data:
             _LOGGER.debug(f"Write historical state: {value} @ {dt}")
             self.write_state_at_time(
                 value,
                 dt=dt,
                 # attributes={"last_reset": dt-timedelta(minutes=5)},
             )
-            self._historical.latest = (
-                self.hass.states.get(self.entity_id) or self._historical.latest
+            self.historical.latest = (
+                self.hass.states.get(self.entity_id) or self.historical.latest
             )
 
         _LOGGER.debug(
-            f"After historical write latest is: {self._historical.latest}"
+            f"After historical write latest is: {self.historical.latest}"
         )
 
     def extend_historical_log(
         self, data: Iterable[tuple[datetime, Any]]
     ) -> None:
-        self._historical.data.extend(data)
-        self._historical.data = list(
-            sorted(self._historical.data, key=lambda x: x[0])
+        self.historical.data.extend(data)
+        self.historical.data = list(
+            sorted(self.historical.data, key=lambda x: x[0])
         )
 
     def _purge_historical_data(self, since) -> None:
@@ -103,16 +113,16 @@ class HistoricalEntity(RestoreEntity):
             _LOGGER.debug("No previous state, skip historical purge")
             return
 
-        initial = len(self._historical.data)
-        self._historical.data = [
-            x for x in self._historical.data if x[0] > since.last_changed
+        initial = len(self.historical.data)
+        self.historical.data = [
+            x for x in self.historical.data if x[0] > since.last_changed
         ]
-        final = len(self._historical.data)
+        final = len(self.historical.data)
 
         _LOGGER.debug(f"Purged {initial-final} elements of {initial}")
 
     def get_historical_latest(self):
-        return self._historical.latest
+        return self.historical.latest
 
     def write_state_at_time(
         self: Entity,

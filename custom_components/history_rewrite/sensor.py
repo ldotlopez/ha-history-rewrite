@@ -45,7 +45,6 @@ from .historical_state import HistoricalEntity
 
 class MacFlySensor(HistoricalEntity, SensorEntity):
     def __init__(self, name, api, unique_id):
-        super().__init__()
         self._api = api
 
         self._attr_name = name
