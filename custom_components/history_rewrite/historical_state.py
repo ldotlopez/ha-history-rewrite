@@ -51,7 +51,6 @@ class HistoricalEntity:
         """HistoricalEntities MUST NOT poll.
         Polling creates incorrect states at intermediate time points.
         """
-
         return False
 
     async def async_added_to_hass(self) -> None:
@@ -59,11 +58,20 @@ class HistoricalEntity:
         - Setup internal stuff with the Store to hold internal state
         - Setup a peridioc call to update the entity
         """
+        assert self.hass is not None
+
+        if self.should_poll:
+            raise Exception("poll model is not supported")
 
         async def _execute_update(*args, **kwargs):
             _LOGGER.debug("Run update")
             await self.async_update()
             await self.flush_historical_log()
+
+        if not self.should_poll:
+            async_track_time_interval(
+                self.hass, _execute_update, timedelta(seconds=60*5)
+            )
 
         self.historical.state = Store(
             hass=self.hass, version=1, key=self.entity_id
@@ -71,10 +79,6 @@ class HistoricalEntity:
         await self.load_state()
 
         await self.flush_historical_log()
-
-        async_track_time_interval(
-            self.hass, _execute_update, timedelta(seconds=12)
-        )
 
         _LOGGER.debug(
             f"HistoricalEntity ready, last entry: {self.historical.data!r}"
