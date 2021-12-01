@@ -34,7 +34,7 @@ class API:
     def calculate_value(point, aprox):
         rstate = random.getstate()
         random.seed(point)
-        ret = aprox * random.randint(75, 125) / 100
+        ret = aprox * random.randint(75, 100) / 100
         random.setstate(rstate)
 
         return ret
