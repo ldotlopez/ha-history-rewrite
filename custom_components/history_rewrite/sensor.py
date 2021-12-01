@@ -18,6 +18,7 @@
 # USA.
 
 
+from datetime import timedelta
 from typing import Optional
 
 from homeassistant.components.sensor import (
@@ -31,15 +32,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import DEVICE_CLASS_ENERGY, ENERGY_KILO_WATT_HOUR
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-
 from homeassistant.helpers.typing import DiscoveryInfoType
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_SENSOR_NAME, DOMAIN
-
-
-from datetime import timedelta
-
 from .historical_state import HistoricalEntity
 
 
@@ -62,35 +58,47 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
 
     @property
     def last_reset(self):
-        # if latest := self.get_historical_latest():
-        #     last_reset = latest.last_changed - timedelta(hours=1)
-        #     _LOGGER.debug(f"Set last_reset to: {last_reset}")
-        #     return last_reset
-
+        """Returning any else will cause discontinuities in history IDKW"""
         return None
+
+        # Another aproach is to return data from historical entity, but causes
+        # wrong results. Keep here for reference
+        # FIXME: Write a proper method to access HistoricalEntity internal
+        # state
+        #
+        # try:
+        #     return self.historical.data[STORE_LAST_UPDATE]
+        # except KeyError:
+        #     return None
 
     @property
     def state(self):
+        # Better report unavailable than anything
+        return None
+
+        # Another aproach is to return data from historical entity, but causes
+        # wrong results. Keep here for reference.
+        #
         # HistoricalEntities doesnt' pull but state is accessed only once when
         # the sensor is registered for the first time in the database
-
-        if state := self.historical_state():
-            return float(state)
+        #
+        # if state := self.historical_state():
+        #     return float(state)
 
     async def async_update(self):
         # Query for the last day since the start of the current hour
-        step = timedelta(hours=1)
-        end = (
-            dt_util.now().replace(minute=0, second=0, microsecond=0)
-        )
-        start = end - timedelta(days=1)
+        slow_api = False
 
-        # now = dt_util.now()
-        # step = timedelta(seconds=60)
-        # end = (
-        #     now.replace(second=0, microsecond=0)
-        # )
-        # start = end - timedelta(minutes=60)
+        if slow_api:
+            step = timedelta(hours=1)
+            end = dt_util.now().replace(minute=0, second=0, microsecond=0)
+            start = end - timedelta(days=1)
+
+        else:
+            now = dt_util.now()
+            step = timedelta(seconds=120)
+            end = now.replace(second=0, microsecond=0)
+            start = end - timedelta(minutes=60)
 
         # Mangle API data
         log = self._api.get_historical_data(start, end, step)
@@ -104,6 +112,8 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
         ]
 
         self.extend_historical_log(log)
+        if not self.should_poll:
+            await self.flush_historical_log()
 
 
 async def async_setup_entry(
