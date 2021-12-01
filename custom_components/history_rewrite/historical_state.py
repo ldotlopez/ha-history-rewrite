@@ -70,7 +70,7 @@ class HistoricalEntity:
 
         if not self.should_poll:
             async_track_time_interval(
-                self.hass, _execute_update, timedelta(seconds=60*5)
+                self.hass, _execute_update, timedelta(seconds=60 * 5)
             )
 
         self.historical.state = Store(

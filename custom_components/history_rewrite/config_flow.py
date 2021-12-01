@@ -51,6 +51,4 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="single_instance_allowed")
 
         api = API()
-        return self.async_create_entry(
-            title=api.device_info["name"], data={}
-        )
+        return self.async_create_entry(title=api.device_info["name"], data={})
