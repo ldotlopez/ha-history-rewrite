@@ -17,6 +17,66 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
 # USA.
 
+"""
+select * from
+    states
+    inner join events
+        on states.event_id = events.event_id
+    inner join state_attributes
+        on states.attributes_id = state_attributes.attributes_id
+    where state_id = 166;
+"""
+#
+#
+# Working code from ha-ideenergy (bus-based method) generates this data:
+#
+# state_id=17768045
+# domain=
+# entity_id=sensor.icp_esxxxxxxxxxxxxxxxxxxxxxxx_historical
+# state=0.166
+# attributes=
+# event_id=
+#     event_id=18133720
+#     event_type=state_changed
+#     event_data=
+#     origin=LOCAL
+#     time_fired=2022-05-02 22:00:00.000000
+#     created=
+#     context_id=fcc29a6db8c26bc77893729f5dfa8305
+#     context_user_id=
+#     context_parent_id=
+# last_changed=2022-05-02 22:00:00.000000
+# last_updated=2022-05-02 22:00:00.000000
+# created=
+# context_id=
+# context_user_id=
+# old_state_id=17768044   # References similar stuff at 2022-05-02 22:00:00.000000
+# attributes_id=685157
+#     attributes_id=685157
+#     hash=994929976
+#     shared_attrs:str={"state_class":"measurement","last_reset":"2022-05-02T21:00:00+00:00","unit_of_measurement":"kWh","friendly_name":"icp_esxxxxxxxxxxxxxxxxxxxxxxx_historical","device_class":"energy"}
+
+
+# Current code creates this data
+# state_id=50
+# entity_id=sensor.mcfly
+# state=106.8
+# attributes=
+# event_id=493
+#     event_id=493
+#     event_type=state_changed
+#     event_data={"new_state":{"entity_id":"sensor.mcfly","state":"106.8","attributes":{},"last_changed":"2022-05-03T15:22:00+00:00","last_updated":"2022-05-03T15:22:00+00:00","context":{"id":"c5c354e2ff37df5d798bacc319430ee5","parent_id":null,"user_id":null}},"entity_id":"sensor.mcfly"}
+#     origin=LOCAL
+#     time_fired=2022-05-03 15:22:00.000000,
+#     context_id=26998505e7597b1ce8a919dd3453937e
+#     context_user_id=
+#     context_parent_id=
+# last_changed=2022-05-03 15:20:00.000000
+# last_updated=2022-05-03 15:22:00.000000
+# old_state_id=49 # Similar stuff but for 2022-05-03 15:20:00.000000
+# attributes_id=
+
+
 import functools
 import logging
 from dataclasses import dataclass
@@ -216,71 +276,49 @@ class HistoricalEntity:
 
             db_events = []
             for st_dt in states_at_dt:
-                # sqlite> select * from events where event_id = 18133721;
-                # event_id=18133721
-                # event_type=state_changed
-                # event_data=
-                # origin=LOCAL
-                # time_fired=2022-05-03 14:05:09.988100
-                # context_id=
-                # context_user_id=60b2dc4eb6f56d135db20968cea2905a
-                # context_parent_id=
-
-                core_state = core.State(
-                    entity_id=self.entity_id,
-                    state=_stringify_state(self, st_dt.state),
-                    last_updated=st_dt.when,
-                    # attributes=st_dt.attributes,
-                )
-                core_ev = core.Event(
+                # core_state = core.State(
+                #     entity_id=self.entity_id,
+                #     state=_stringify_state(self, st_dt.state),
+                #     last_updated=st_dt.when,
+                #     # attributes=st_dt.attributes,
+                # )
+                # core_ev = core.Event(
+                #     event_type=core.EVENT_STATE_CHANGED,
+                #     time_fired=st_dt.when,
+                #     data={"new_state": core_state, "entity_id": self.entity_id},
+                # )
+                # event = models.Events.from_event(core_ev)
+                event = models.Events(
                     event_type=core.EVENT_STATE_CHANGED,
                     time_fired=st_dt.when,
-                    data={"new_state": core_state, "entity_id": self.entity_id},
                 )
-                event = models.Events.from_event(core_ev)
                 db_events.append(event)
             session.add_all(db_events)
+
+            db_attributes = []
+            for st_dt in states_at_dt:
+                attrs_as_dict = _build_attributes(self, st_dt.state)
+                attrs_as_dict.update(st_dt.attributes)
+                attrs_as_str = models.JSON_DUMP(attrs_as_dict)
+                attrs_hash = models.StateAttributes.hash_shared_attrs(attrs_as_str)
+                attributes = models.StateAttributes(
+                    hash=attrs_hash, shared_attrs=attrs_as_str
+                )
+                db_attributes.append(attributes)
+            session.add_all(db_attributes)
+
             session.commit()
 
             db_states = []
             for idx, st_dt in enumerate(states_at_dt):
-                # At this point we have:
-                # CREATE TABLE states (
-                #     state_id INTEGER NOT NULL,
-                #     entity_id VARCHAR(255),
-                #     state VARCHAR(255),
-                #     attributes TEXT,
-                #     event_id INTEGER,
-                #     last_changed DATETIME,
-                #     last_updated DATETIME,
-                #     old_state_id INTEGER,
-                #     attributes_id INTEGER,
-                # );
-                # 29|sensor.mcfly|2808.0|||2022-05-03 12:00:00.000000|2022-05-03 13:00:00.000000|28|
-                # 30|sensor.mcfly|3276.0|||2022-05-03 13:00:00.000000|2022-05-03 14:00:00.000000|29|
-                # But we want:
-                # CREATE TABLE states (
-                #     state_id INTEGER NOT NULL,
-                #     domain VARCHAR(64),
-                #     entity_id VARCHAR(255),
-                #     state VARCHAR(255),
-                #     attributes TEXT,
-                #     event_id INTEGER,
-                #     last_changed DATETIME,
-                #     last_updated DATETIME,
-                #     created DATETIME,
-                #     context_id VARCHAR(36),
-                #     context_user_id VARCHAR(36), old_state_id INTEGER, attributes_id INTEGER,
-                # );
-                # 17768044||sensor.icp_es0021000002618134yh_historical|0.311||18133719|2022-05-02 21:00:00.000000|2022-05-02 21:00:00.000000||||17768043|685156
-                # 17768045||sensor.icp_es0021000002618134yh_historical|0.166||18133720|2022-05-02 22:00:00.000000|2022-05-02 22:00:00.000000||||17768044|685157
-
                 state = models.States(
                     entity_id=self.entity_id,
                     state=_stringify_state(self, st_dt.state),
                     last_updated=st_dt.when,
-                    # attributes=st_dt.attributes,
+                    last_changed=st_dt.when,
+                    state_attributes=db_attributes[idx],
                     event=db_events[idx],
+                    event_id=db_events[idx].event_id,
                 )
                 db_states.append(state)
 
@@ -299,7 +337,6 @@ class HistoricalEntity:
             for idx in range(1, len(db_states)):
                 db_states[idx].old_state = db_states[idx - 1]
                 db_states[idx].old_state_id = db_states[idx - 1].state_id
-                db_states[idx].last_changed = db_states[idx - 1].last_updated
 
             session.add_all(db_states)
             session.commit()
