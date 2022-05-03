@@ -18,6 +18,7 @@
 # USA.
 
 
+import logging
 from datetime import timedelta
 from typing import Optional
 
@@ -36,7 +37,9 @@ from homeassistant.helpers.typing import DiscoveryInfoType
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_SENSOR_NAME, DOMAIN
-from .historical_state import HistoricalEntity
+from .historical_state import HistoricalEntity, StateAtTimePoint
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class MacFlySensor(HistoricalEntity, SensorEntity):
@@ -46,48 +49,23 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._attr_unit_of_measurement = ENERGY_KILO_WATT_HOUR
-        self._attr_native_unit_of_measurement = ENERGY_KILO_WATT_HOUR
+        # self._attr_native_unit_of_measurement = ENERGY_KILO_WATT_HOUR
         self._attr_device_class = DEVICE_CLASS_ENERGY
 
     @property
     def extra_state_attributes(self):
         return {
-            ATTR_LAST_RESET: self.last_reset,
+            # ATTR_LAST_RESET: self.last_reset,
             ATTR_STATE_CLASS: STATE_CLASS_MEASUREMENT,
         }
 
     @property
-    def last_reset(self):
-        """Returning any else will cause discontinuities in history IDKW"""
-        return None
+    def state_class(self):
+        return STATE_CLASS_MEASUREMENT
 
-        # Another aproach is to return data from historical entity, but causes
-        # wrong results. Keep here for reference
-        # FIXME: Write a proper method to access HistoricalEntity internal
-        # state
-        #
-        # try:
-        #     return self.historical.data[STORE_LAST_UPDATE]
-        # except KeyError:
-        #     return None
-
-    @property
-    def state(self):
-        # Better report unavailable than anything
-        return None
-
-        # Another aproach is to return data from historical entity, but causes
-        # wrong results. Keep here for reference.
-        #
-        # HistoricalEntities doesnt' pull but state is accessed only once when
-        # the sensor is registered for the first time in the database
-        #
-        # if state := self.historical_state():
-        #     return float(state)
-
-    async def async_update(self):
+    async def async_update_history(self):
         # Query for the last day since the start of the current hour
-        slow_api = False
+        slow_api = True
 
         if slow_api:
             step = timedelta(hours=1)
@@ -103,17 +81,19 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
         # Mangle API data
         log = self._api.get_historical_data(start, end, step)
         log = [
-            (
-                dt_util.as_utc(end),
-                v,
-                {"last_reset": dt_util.as_utc(start)},
+            StateAtTimePoint(
+                state=v,
+                when=end,
+                # when=dt_util.as_utc(end),
+                attributes={"last_reset": dt_util.as_utc(start)},
             )
             for (start, end, v) in log
         ]
 
-        self.extend_historical_log(log)
-        if not self.should_poll:
-            await self.flush_historical_log()
+        return log
+        # self.extend_historical_log(log)
+        # if not self.should_poll:
+        #     await self.flush_historical_log()
 
 
 async def async_setup_entry(
