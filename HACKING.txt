@@ -1,0 +1,70 @@
+
+
+Working code from ha-ideenergy (bus-based method) generates this data:
+
+
+state_id=17768045
+domain=
+entity_id=sensor.icp_es0021000002618134yh_historical
+state=0.166
+attributes=
+event_id=
+    event_id=18133720
+    event_type=state_changed
+    event_data=
+    origin=LOCAL
+    time_fired=2022-05-02 22:00:00.000000
+    created=
+    context_id=fcc29a6db8c26bc77893729f5dfa8305
+    context_user_id=
+    context_parent_id=
+last_changed=2022-05-02 22:00:00.000000
+last_updated=2022-05-02 22:00:00.000000
+created=
+context_id=
+context_user_id=
+old_state_id=17768044   # References similar stuff at 2022-05-02 22:00:00.000000
+attributes_id=685157
+    attributes_id=685157
+    hash=994929976
+    shared_attrs:str={"state_class":"measurement","last_reset":"2022-05-02T21:00:00+00:00","unit_of_measurement":"kWh","friendly_name":"icp_es0021000002618134yh_historical","device_class":"energy"}
+
+
+Current code creates this data
+state_id=50
+entity_id=sensor.mcfly
+state=106.8
+attributes=
+event_id=493
+    event_id=493
+    event_type=state_changed
+    event_data={"new_state":{"entity_id":"sensor.mcfly","state":"106.8","attributes":{},"last_changed":"2022-05-03T15:22:00+00:00","last_updated":"2022-05-03T15:22:00+00:00","context":{"id":"c5c354e2ff37df5d798bacc319430ee5","parent_id":null,"user_id":null}},"entity_id":"sensor.mcfly"}
+    origin=LOCAL
+    time_fired=2022-05-03 15:22:00.000000,
+    context_id=26998505e7597b1ce8a919dd3453937e
+    context_user_id=
+    context_parent_id=
+last_changed=2022-05-03 15:20:00.000000
+last_updated=2022-05-03 15:22:00.000000
+old_state_id=49 # Similar stuff but for 2022-05-03 15:20:00.000000
+attributes_id=
+
+
+select * from
+    states as st
+    inner join events as ev
+        on states.event_id = events.event_id
+    inner join state_attributes as sa
+        on states.attributes_id = state_attributes.attributes_id
+    where
+        state_id = (select max(state_id) from states where entity_id in ('sensor.mcfly','sensor.icp_es0021000002618134yh_accumulated') and state not in ('unknown', 'unavailable'));
+
+
+state_id    domain      entity_id     state   attributes  event_id    last_changed                last_updated                created     context_id  context_user_id  old_state_id  attributes_id  event_id    event_type     event_data  origin      time_fired                  created     context_id                        context_user_id  context_parent_id  attributes_id  hash        shared_attrs
+----------  ----------  -------------------------------------------  ----------  ----------  ----------  --------------------------  --------------------------  ----------  ----------  ---------------  ------------  -------------  ----------  -------------  ----------  ----------  --------------------------  ----------  --------------------------------  ---------------  -----------------  -------------  ----------  --------------------------------------------------------------------------------------------------------------------
+17767877                sensor.mcfly  45825.0             18133551    2022-05-03 14:05:03.489654  2022-05-03 14:05:03.489654                                           17767875      144            18133551    state_changed              LOCAL       2022-05-03 14:05:03.489654              a315f2f229180984fdea1d081814b839                                      144            1502492789  {"state_class":"total_increasing","unit_of_measurement":"kWh","device_class":"energy","friendly_name":"icp_es0021000002618134yh_accumulated"}
+
+
+state_id                entity_id     state   attributes  event_id   last_changed                last_updated                old_state_id  attributes_id  event_id  event_type     event_data  origin  time_fired                  context_id  context_user_id  context_parent_id  attributes_id  hash        shared_attrs
+--------                ------------  ------  ----------  --------  --------------------------  --------------------------  ------------  -------------  --------  -------------  ----------  ------  --------------------------  ----------  ---------------  -----------------  -------------  ----------  --------------------------------------------------------------------------------------------------------------------------------------------------
+862                     sensor.mcfly  3348.0              3468        2022-05-04 07:00:00.000000  2022-05-04 07:00:00.000000  861           529            3468      state_changed                      2022-05-04 07:00:00.000000                                                  529            3236127255  {"state_class":"measurement","unit_of_measurement":"kWh","friendly_name":"mcfly","device_class":"energy","last_reset":"2022-05-04T06:00:00+00:00"}

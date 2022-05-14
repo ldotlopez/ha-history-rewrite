@@ -27,6 +27,7 @@ from homeassistant.components.sensor import (
     ATTR_STATE_CLASS,
     STATE_CLASS_MEASUREMENT,
     STATE_CLASS_TOTAL_INCREASING,
+    STATE_CLASS_TOTAL,
     SensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -37,7 +38,7 @@ from homeassistant.helpers.typing import DiscoveryInfoType
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_SENSOR_NAME, DOMAIN
-from .historical_state import HistoricalEntity, StateAtTimePoint
+from .historical_entity import HistoricalEntity, DatedState
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,19 +50,20 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._attr_unit_of_measurement = ENERGY_KILO_WATT_HOUR
-        # self._attr_native_unit_of_measurement = ENERGY_KILO_WATT_HOUR
         self._attr_device_class = DEVICE_CLASS_ENERGY
 
     @property
     def extra_state_attributes(self):
         return {
             # ATTR_LAST_RESET: self.last_reset,
-            ATTR_STATE_CLASS: STATE_CLASS_MEASUREMENT,
+            ATTR_STATE_CLASS: self.state_class,
         }
 
     @property
     def state_class(self):
-        return STATE_CLASS_MEASUREMENT
+        # return STATE_CLASS_MEASUREMENT
+        # return STATE_CLASS_TOTAL_INCREASING
+        return STATE_CLASS_TOTAL  # TOTAL… since last_reset
 
     async def async_update_history(self):
         # Query for the last day since the start of the current hour
@@ -81,19 +83,17 @@ class MacFlySensor(HistoricalEntity, SensorEntity):
         # Mangle API data
         log = self._api.get_historical_data(start, end, step)
         log = [
-            StateAtTimePoint(
+            DatedState(
+                # state=(dt_util.as_timestamp(start)),
                 state=v,
-                when=end,
+                when=dt_util.as_utc(end),
                 # when=dt_util.as_utc(end),
-                attributes={"last_reset": dt_util.as_utc(start)},
+                attributes={ATTR_LAST_RESET: dt_util.as_utc(start)},
             )
             for (start, end, v) in log
         ]
 
         return log
-        # self.extend_historical_log(log)
-        # if not self.should_poll:
-        #     await self.flush_historical_log()
 
 
 async def async_setup_entry(
@@ -111,4 +111,4 @@ async def async_setup_entry(
         )
     ]
 
-    add_entities(sensors, update_before_add=True)  # Update entity on add
+    add_entities(sensors, update_before_add=False)  # Update entity on add
